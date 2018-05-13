@@ -2,12 +2,21 @@
   <div class="hello">
     <input type="file" @change="loadFile">
     <h1>Text</h1>
+    <button @click="saveInFile">Save in file </button>
     <div class="text-editor">
       <div
         v-for="(row, rowNumber) in textToEdit"
         class="row"
       >
-        <span>{{rowNumber}}: {{row}}</span>
+        <span
+          class="row-content"
+        >{{rowNumber}}:
+          <span
+            v-for="letter in row"
+            class="row-letter"
+          >{{letter}}</span>
+        </span>
+
         <div
           v-if="isAboveText(rowNumber)"
           class="tabs-row"
@@ -18,7 +27,9 @@
               :key="tabNumber"
               :parent="true"
               :draggable="!tab.editable"
+              :grid="[11]"
               :resizable="false"
+              @dragging="handleDragTab($event, rowNumber, tabNumber)"
               axis="x"
               :handles="[]"
               :h="60"
@@ -48,7 +59,7 @@
 </template>
 
 <script>
-import { intersperse, prepend, append, compose, assocPath } from 'ramda'
+import { intersperse, prepend, append, compose, assocPath, sortBy, prop } from 'ramda'
 import VueDraggableResizable from 'vue-draggable-resizable'
 
 export default {
@@ -74,7 +85,8 @@ export default {
     },
     prepareTextToEditor(text) {
       const createTextWithSeparators = compose(prepend('\r\n'), intersperse('\r\n'))
-      this.textToEdit = createTextWithSeparators(text)
+      const trimmedText = createTextWithSeparators(text).map(textRow => textRow.trim())
+      this.textToEdit = trimmedText
     },
     isAboveText(rowNumber) {
       if (rowNumber === (this.textToEdit.length - 1)) return false
@@ -90,7 +102,6 @@ export default {
       // this.tabs = prepend({ text: '', position: 0 }, this.tabs[rowNumber])
     },
     editMode(event, value, rowNumber, tabNumber) {
-      console.log(event)
       this.clearSelection()
       this.tabs = assocPath([rowNumber, tabNumber, 'editable'], value, this.tabs)
       event.target.click()
@@ -99,12 +110,32 @@ export default {
       window.getSelection().removeAllRanges()
     },
     changeText(event, rowNumber, tabNumber) {
-      console.log(event.target.innerText)
       this.tabs = assocPath([rowNumber, tabNumber, 'text'], event.target.innerText, this.tabs)
-      // this.tabs = {
-      //   ...this.tabs,
-      //   [rowNumber]: prepend({text: '', position: 0 }, this.tabs[rowNumber])
-      // }
+    },
+    handleDragTab(left, rowNumber, tabNumber) {
+      this.tabs = assocPath([rowNumber, tabNumber, 'position'], left/11, this.tabs)
+    },
+    transformArrayToText() {
+      this.textToEdit.map(row => {
+        console.log(this.transformRowTabsToText(row))
+      })
+    },
+    transformRowTabsToText(tabs) {
+      const sortedTabs = sortBy(prop('position'), tabs)
+      return sortedTabs.reduce((arr, tab) => {
+        const indents = arr.length ? tab.position - arr.length : tab.position
+        const textIndents = indents.map(indent => ' ')
+        arr = append(tab.text, textIndents)
+        return arr
+      }, [])
+      // return`${textIndents}${tab.text}`
+    },
+    saveInFile() {
+      this.transformArrayToText()
+      const textToSave = this.textToEdit;
+      const textToSaveAsBlob = new Blob([textToSave], {type:"text/plain"});
+      const textToSaveAsURL = window.URL.createObjectURL(textToSaveAsBlob);
+      const fileNameToSaveAs = document.getElementById("inputFileNameToSaveAs").value;
     }
   }
 }
@@ -116,6 +147,15 @@ export default {
     display: flex;
     justify-content: space-between;
     border: 1px solid red;
+    font-family: Courier;
+  }
+
+  .row-content {
+    display: flex;
+  }
+
+  .row-letter {
+    width: 11px;
   }
 
   .tabs-row {
@@ -143,6 +183,6 @@ export default {
   .tabs-row .tabs-field .tab-wrapper {
     display: flex;
     max-width: 100%;
-    min-width: 15px;
+    min-width: 20px;
   }
 </style>
