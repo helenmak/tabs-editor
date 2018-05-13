@@ -1,8 +1,12 @@
 <template>
   <div class="hello">
-    <input type="file" @change="loadFile">
-    <h1>Text</h1>
+    <label>
+      Загрузить текст
+      <input type="file" @change="loadFile">
+    </label>
+
     <button @click="saveInFile">Save in file </button>
+
     <div class="text-editor">
       <div
         v-for="(row, rowNumber) in textToEdit"
@@ -10,7 +14,9 @@
       >
         <span
           class="row-content"
-        >{{rowNumber}}:
+          contenteditable
+          @input="editSongText($event, rowNumber)"
+        >
           <span
             v-for="letter in row"
             class="row-letter"
@@ -59,7 +65,7 @@
 </template>
 
 <script>
-import { intersperse, prepend, append, compose, assocPath, sortBy, prop } from 'ramda'
+import { intersperse, prepend, append, compose, assocPath, sortBy, prop, mapObjIndexed, clone } from 'ramda'
 import VueDraggableResizable from 'vue-draggable-resizable'
 
 export default {
@@ -69,7 +75,8 @@ export default {
     return {
       text: [],
       textToEdit: ["\r\n","Замученный дорогой, я выбился из сил, ","\r\n","И в доме лесника я ночлега попросил. ","\r\n","С улыбкой добродушной старик меня впустил, ","\r\n","И жестом дружелюбным на ужин пригласил. ","\r\n","","\r\n","Будь как дома путник, я ни в чем не откажу, ","\r\n","Я ни в чем не откажу, я ни в чем не откажу! ","\r\n","Множество историй, коль желаешь расскажу, ","\r\n","Коль желаешь расскажу, коль желаешь расскажу! ","\r\n","","\r\n","На улице темнело, сидел я за столом. ","\r\n","Лесник сидел напротив, болтал о том, о сем. ","\r\n","Что нет среди животных у старика врагов, ","\r\n","Что нравится ему подкармливать волков. ","\r\n","","\r\n","Будь как дома путник, я ни в чем не откажу, ","\r\n","Я ни в чем не откажу, я ни в чем не откажу! ","\r\n","Множество историй, коль желаешь расскажу, ","\r\n","Коль желаешь расскажу, коль желаешь расскажу! ","\r\n","","\r\n","И волки среди ночи завыли под окном. ","\r\n","Старик заулыбался и вдруг покинул дом. ","\r\n","Но вскоре возвратился с ружьем на перевес: ","\r\n","Друзья хотят покушать, пойдем приятель в лес! ","\r\n","","\r\n","Будь как дома путник, я ни в чем не откажу, ","\r\n","Я ни в чем не откажу, я ни в чем не откажу! ","\r\n","Множество историй, коль желаешь расскажу, ","\r\n","Коль желаешь расскажу, коль желаешь расскажу!","\r\n",""],
-      tabs: {}
+      tabs: {},
+      textToSave: ''
     }
   },
   methods:{
@@ -79,14 +86,13 @@ export default {
       reader.onload = () => {
         const result = reader.result
         this.text = result.split('\r\n')
-        this.prepareTextToEditor(this.text)
+        this.prepareNewTextToEditor(this.text)
       }
-      reader.readAsText(file, 'windows-1251')
+      reader.readAsText(file, 'utf-8')
     },
-    prepareTextToEditor(text) {
+    prepareNewTextToEditor(text) {
       const createTextWithSeparators = compose(prepend('\r\n'), intersperse('\r\n'))
-      const trimmedText = createTextWithSeparators(text).map(textRow => textRow.trim())
-      this.textToEdit = trimmedText
+      this.textToEdit = createTextWithSeparators(text).map(textRow => textRow.trim())
     },
     isAboveText(rowNumber) {
       if (rowNumber === (this.textToEdit.length - 1)) return false
@@ -99,7 +105,6 @@ export default {
         ...this.tabs,
         [rowNumber]: append({ text: '', position: 0, editable: false }, this.tabs[rowNumber])
       }
-      // this.tabs = prepend({ text: '', position: 0 }, this.tabs[rowNumber])
     },
     editMode(event, value, rowNumber, tabNumber) {
       this.clearSelection()
@@ -116,26 +121,46 @@ export default {
       this.tabs = assocPath([rowNumber, tabNumber, 'position'], left/11, this.tabs)
     },
     transformArrayToText() {
-      this.textToEdit.map(row => {
-        console.log(this.transformRowTabsToText(row))
-      })
+      let tabsRows = {}
+      const transformTabs = (rowContent, i) => {
+        const result = this.transformRowTabsToText(rowContent)
+        tabsRows = assocPath([i], result, tabsRows)
+      }
+      mapObjIndexed(transformTabs, this.tabs)
+
+      let text = clone(this.textToEdit)
+      const insertTabToText = (tabRow, rowNumber) => text[rowNumber] = tabRow
+      mapObjIndexed(insertTabToText, tabsRows)
+
+      this.textToSave = text.join('\r\n')
     },
     transformRowTabsToText(tabs) {
       const sortedTabs = sortBy(prop('position'), tabs)
-      return sortedTabs.reduce((arr, tab) => {
-        const indents = arr.length ? tab.position - arr.length : tab.position
-        const textIndents = indents.map(indent => ' ')
-        arr = append(tab.text, textIndents)
-        return arr
-      }, [])
-      // return`${textIndents}${tab.text}`
+      return sortedTabs.reduce((acc, tab) => {
+        const accumulatorLength = acc.length
+        const lengthOfLastTabInRow = accumulatorLength ? (acc[accumulatorLength-1].length - 1) : 0
+        const lastIndentPosition = tab.position
+        const indents = accumulatorLength ? lastIndentPosition - accumulatorLength - lengthOfLastTabInRow : lastIndentPosition
+        const textIndents = Array(indents).fill(' ')
+        const textIndentsWithTab = append(tab.text, textIndents)
+        return [...acc, ...textIndentsWithTab]
+      }, []).join('')
     },
     saveInFile() {
       this.transformArrayToText()
-      const textToSave = this.textToEdit;
-      const textToSaveAsBlob = new Blob([textToSave], {type:"text/plain"});
-      const textToSaveAsURL = window.URL.createObjectURL(textToSaveAsBlob);
-      const fileNameToSaveAs = document.getElementById("inputFileNameToSaveAs").value;
+      const textToSave = this.textToSave
+      const textToSaveAsBlob = new Blob([textToSave], {type:"text/plain"})
+      const textToSaveAsURL = window.URL.createObjectURL(textToSaveAsBlob)
+      const fileNameToSave = 'fileTabs'
+      const link = document.createElement('a')
+      link.href = textToSaveAsURL
+      link.setAttribute('download', fileNameToSave)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    },
+    editSongText(event, row){
+      this.textToEdit[row] = event.target.innerText
     }
   }
 }
@@ -146,8 +171,8 @@ export default {
     text-align: left;
     display: flex;
     justify-content: space-between;
-    border: 1px solid red;
     font-family: Courier;
+    border: 1px solid aliceblue;
   }
 
   .row-content {
@@ -164,13 +189,20 @@ export default {
     justify-content: flex-end;
   }
 
-  .tabs-row .add {
-    border: 1px solid yellow;
+  .add {
+    width: 20px;
+    cursor: pointer;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .add:hover {
+    box-sizing: border-box;
+    background: lightblue;
   }
 
   .tabs-row .tabs-field {
     display: flex;
-    border: 1px solid black;
     flex: 1 1 auto;
     position: relative;
   }
