@@ -42,7 +42,7 @@
         >{{row}}</span>
 
         <div
-          v-if="isAboveText(rowNumber)"
+          v-if="isUnderText(rowNumber)"
           class="tabs-row"
         >
           <div class="tabs-field">
@@ -134,8 +134,9 @@ export default {
       const createTextWithSeparators = compose(prepend('\r\n'), intersperse('\r\n'))
       this.textToEdit = createTextWithSeparators(text).map(textRow => textRow.trim())
     },
-    isAboveText(rowNumber) {
-      if (rowNumber === (this.textToEdit.length - 1)) return false
+    isUnderText(rowNumber) {
+      const isLastRow = rowNumber === (this.textToEdit.length - 1)
+      if (isLastRow) return false
       const nextRowWithoutSymbols = this.textToEdit[ rowNumber+1 ].trim()
       const nextRowLength = nextRowWithoutSymbols.length
       return Boolean(nextRowLength)
@@ -149,7 +150,6 @@ export default {
     editMode(event, value, rowNumber, tabNumber) {
       this.clearSelection()
       this.tabs = assocPath([rowNumber, tabNumber, 'editable'], value, this.tabs)
-      event.target.click()
     },
     clearSelection() {
       window.getSelection().removeAllRanges()
@@ -158,7 +158,7 @@ export default {
       this.tabs = assocPath([rowNumber, tabNumber, 'text'], event.target.innerText, this.tabs)
     },
     handleDragTab(left, rowNumber, tabNumber) {
-      this.tabs = assocPath([rowNumber, tabNumber, 'position'], left/11, this.tabs)
+      this.tabs = assocPath([rowNumber, tabNumber, 'position'], left/11, this.tabs) // 11 is for letter container width
     },
     transformArrayToText() {
       let tabsRows = {}
@@ -191,7 +191,10 @@ export default {
       const textToSave = this.textToSave
       const textToSaveAsBlob = new Blob([textToSave], {type:"text/plain"})
       const textToSaveAsURL = window.URL.createObjectURL(textToSaveAsBlob)
-      const fileNameToSave = `${this.fileName.slice(0, -4)}_tabs` // -4 is for '.txt'
+      let fileNameToSave = this.fileName
+      if(this.fileName.indexOf('.txt') > (-1)){
+        fileNameToSave = `${this.fileName.slice(0, -4)}_tabs` // -4 is for '.txt'
+      }
       const link = document.createElement('a')
       link.href = textToSaveAsURL
       link.setAttribute('download', fileNameToSave)
@@ -206,11 +209,6 @@ export default {
     handleEditText(event, row){
       if(!event.target.textContent) this.textToDisplayEditMode = omit([row], this.textToEdit)
       this.textToDisplayEditMode = assocPath([row], event.target.textContent, this.textToEdit)
-    },
-    handleEditTextEnter(event, row){
-      //event.preventDefault()
-      console.log(false)
-      return false
     },
     saveEditedText(){
       this.mode = 'show'
